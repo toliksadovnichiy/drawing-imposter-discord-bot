@@ -62,19 +62,19 @@ class Game(commands.Cog):
         self.bot = bot
         self.word_service = WordService()
 
-    @app_commands.command(name="start_game", description="Start Draw Impostor game")
-async def start_game(self, interaction: discord.Interaction):
+    @app_commands.command(name="start_game", description="Start Drawing Imposter game")
+    async def start_game(self, interaction: discord.Interaction):
 
-    if not interaction.user.voice:
+        if not interaction.user.voice:
+            await interaction.response.send_message(
+                "Ти повинен бути в голосовому каналі.",
+                ephemeral=True
+            )
+            return
+
+        view = DifficultyView(self)
+
         await interaction.response.send_message(
-            "Ти повинен бути в голосовому каналі.",
-            ephemeral=True
+            "🎮 Обери складність:",
+            view=view
         )
-        return
-
-    view = DifficultyView(self)
-
-    await interaction.response.send_message(
-        "🎮 Обери складність:",
-        view=view
-    )
