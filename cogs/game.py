@@ -10,18 +10,13 @@ class DifficultyView(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=30)
         self.cog = cog
+        self.selected_members = []
 
     async def start_game(self, interaction, difficulty: str):
 
-        channel = interaction.user.voice.channel
-        members = [m for m in channel.members if not m.bot]
+        await interaction.response.defer()
 
-        if len(members) < 3:
-            await interaction.response.edit_message(
-                content="❌ Потрібно мінімум 3 гравця",
-                view=None
-            )
-            return
+        members = self.selected_members  # 👈 теперь используем выбранных
 
         impostor = random.choice(members)
         word = self.cog.word_service.get_random_word(difficulty)
@@ -35,12 +30,11 @@ class DifficultyView(discord.ui.View):
             except:
                 pass
 
-        # 🔒 отключаем кнопки
         for item in self.children:
             item.disabled = True
 
-        await interaction.response.edit_message(
-            content=f"🎮 Гра почалась! Складність: **{difficulty}**",
+        await interaction.edit_original_response(
+            content=f"🎮 Game Started! Players: {len(members)}",
             view=self
         )
 
@@ -55,6 +49,61 @@ class DifficultyView(discord.ui.View):
     @discord.ui.button(label="Hard", style=discord.ButtonStyle.danger)
     async def hard(self, interaction, button):
         await self.start_game(interaction, "hard")
+
+
+class PlayerSelect(discord.ui.Select):
+    def __init__(self, members):
+        options = [
+            discord.SelectOption(label=m.display_name, value=str(m.id))
+            for m in members
+        ]
+
+        super().__init__(
+            placeholder="Вибери гравців (залиш незмінним якщо гратимуть всі)...",
+            min_values=0,
+            max_values=len(options),
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.selected_players = self.values
+        await interaction.response.defer()
+
+
+class PlayerSelectView(discord.ui.View):
+    def __init__(self, cog, members):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.members = members
+        self.selected_players = None  # 👈 None = все выбраны
+
+        self.add_item(PlayerSelect(members))
+
+    @discord.ui.button(label="Продовжити", style=discord.ButtonStyle.success)
+    async def continue_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        # 👇 если пользователь НЕ выбирал — берём всех
+        if not self.selected_players:
+            selected_members = self.members
+        else:
+            selected_members = [
+                m for m in self.members if str(m.id) in self.selected_players
+            ]
+
+        if len(selected_members) < 3:
+            await interaction.response.send_message(
+                "❌ Потрібно мінімум 3 гравця",
+                ephemeral=True
+            )
+            return
+
+        view = DifficultyView(self.cog)
+        view.selected_members = selected_members
+
+        await interaction.response.edit_message(
+            content=f"🎮 Обери складність (гравців: {len(selected_members)}):",
+            view=view
+        )
 
 
 class Game(commands.Cog):
@@ -72,9 +121,12 @@ class Game(commands.Cog):
             )
             return
 
-        view = DifficultyView(self)
+        channel = interaction.user.voice.channel
+        members = [m for m in channel.members if not m.bot]
+
+        view = PlayerSelectView(self, members)
 
         await interaction.response.send_message(
-            "🎮 Обери складність:",
+            "👥 Обери гравців:",
             view=view
         )
